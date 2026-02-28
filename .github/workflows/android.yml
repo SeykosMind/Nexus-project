@@ -70,4 +70,4 @@ jobs:
         with:
           name: nexus-release-unsigned
           path: app/build/outputs/apk/release/app-release-unsigned.apk
-          retention-days: 30
+          retention-days: 30 
