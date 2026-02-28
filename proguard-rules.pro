@@ -1,0 +1,5 @@
+-keep class com.nexus.data.** { *; }
+-keep class org.apache.pdfbox.** { *; }
+-keep class org.apache.poi.** { *; }
+-dontwarn org.apache.**
+-dontwarn javax.**
