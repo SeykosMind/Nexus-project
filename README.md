@@ -2,7 +2,7 @@
 
 > *Your documents. Your device. Your AI.*
 
-## What it does 
+## What it does  
 - Indexes PDF, Word, Excel, PowerPoint, TXT, CSV, JSON files locally
 - Full-text search across all your documents
 - AI-powered semantic queries via your local Gemma API (127.0.0.1:8080)
