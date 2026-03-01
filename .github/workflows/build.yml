@@ -2,7 +2,7 @@ name: Build NEXUS APK
 
 on:
   push:
-    branches: [ main ]  # Cambié 'principal' a 'main' porque es lo que sale en tu captura
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -20,14 +20,16 @@ jobs:
           cache: 'gradle'
 
       - name: Compilar APK
-        # Aquí entramos a la carpeta 'nexus' antes de ejecutar nada
         run: |
           cd nexus
           chmod +x gradlew
+          # Esto evita que GitHub mate el proceso por falta de memoria (Error 143)
+          export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
           ./gradlew assembleDebug --no-daemon
 
       - name: Subir APK como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: nexus-apk
+          # Tu APK se genera aquí según tu carpeta 'app' dentro de 'nexus'
           path: nexus/app/build/outputs/apk/debug/app-debug.apk
