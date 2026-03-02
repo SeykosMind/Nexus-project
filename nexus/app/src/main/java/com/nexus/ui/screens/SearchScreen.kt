@@ -45,7 +45,7 @@ fun SearchScreen(
             .fillMaxSize()
             .background(colors.background)
     ) {
-        HudGrid(Modifier.fillMaxSize().weight(0f).height(0.dp)) // subtle grid
+    
 
         // Top bar
         Row(
