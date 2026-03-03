@@ -21,12 +21,15 @@ class SettingsRepository @Inject constructor(private val context: Context) {
     private val gson = Gson()
 
     private object Keys {
-        val API_HOST     = stringPreferencesKey("api_host")
-        val API_PORT     = stringPreferencesKey("api_port")
-        val MODEL_NAME   = stringPreferencesKey("model_name")
-        val WATCHED      = stringPreferencesKey("watched_folders")
-        val AUTO_SYNC    = booleanPreferencesKey("auto_sync")
-        val INCL_IMAGES  = booleanPreferencesKey("include_images")
+        val API_HOST          = stringPreferencesKey("api_host")
+        val API_PORT          = stringPreferencesKey("api_port")
+        val MODEL_NAME        = stringPreferencesKey("model_name")
+        val WATCHED           = stringPreferencesKey("watched_folders")
+        val AUTO_SYNC         = booleanPreferencesKey("auto_sync")
+        val INCL_IMAGES       = booleanPreferencesKey("include_images")
+        val SHARED_FOLDER     = stringPreferencesKey("shared_network_folder")
+        val DRIVE_FOLDER_ID   = stringPreferencesKey("drive_folder_id")
+        val DRIVE_SYNC        = booleanPreferencesKey("drive_sync_enabled")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -37,12 +40,15 @@ class SettingsRepository @Inject constructor(private val context: Context) {
             gson.fromJson(foldersJson, object : TypeToken<List<String>>() {}.type)
         }
         AppSettings(
-            apiHost       = prefs[Keys.API_HOST]   ?: "127.0.0.1",
-            apiPort       = prefs[Keys.API_PORT]   ?: "8080",
-            modelName     = prefs[Keys.MODEL_NAME] ?: "gemma",
-            watchedFolders = folders,
-            autoSync      = prefs[Keys.AUTO_SYNC]  ?: true,
-            includeImages = prefs[Keys.INCL_IMAGES] ?: false
+            apiHost           = prefs[Keys.API_HOST]        ?: "127.0.0.1",
+            apiPort           = prefs[Keys.API_PORT]        ?: "8080",
+            modelName         = prefs[Keys.MODEL_NAME]      ?: "gemma",
+            watchedFolders    = folders,
+            autoSync          = prefs[Keys.AUTO_SYNC]       ?: true,
+            includeImages     = prefs[Keys.INCL_IMAGES]     ?: false,
+            sharedNetworkFolder = prefs[Keys.SHARED_FOLDER] ?: "",
+            driveFolderId     = prefs[Keys.DRIVE_FOLDER_ID] ?: "",
+            driveSyncEnabled  = prefs[Keys.DRIVE_SYNC]      ?: false
         )
     }
 
@@ -50,12 +56,15 @@ class SettingsRepository @Inject constructor(private val context: Context) {
 
     suspend fun save(settings: AppSettings) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.API_HOST]   = settings.apiHost
-            prefs[Keys.API_PORT]   = settings.apiPort
-            prefs[Keys.MODEL_NAME] = settings.modelName
-            prefs[Keys.WATCHED]    = gson.toJson(settings.watchedFolders)
-            prefs[Keys.AUTO_SYNC]  = settings.autoSync
-            prefs[Keys.INCL_IMAGES] = settings.includeImages
+            prefs[Keys.API_HOST]        = settings.apiHost
+            prefs[Keys.API_PORT]        = settings.apiPort
+            prefs[Keys.MODEL_NAME]      = settings.modelName
+            prefs[Keys.WATCHED]         = gson.toJson(settings.watchedFolders)
+            prefs[Keys.AUTO_SYNC]       = settings.autoSync
+            prefs[Keys.INCL_IMAGES]     = settings.includeImages
+            prefs[Keys.SHARED_FOLDER]   = settings.sharedNetworkFolder
+            prefs[Keys.DRIVE_FOLDER_ID] = settings.driveFolderId
+            prefs[Keys.DRIVE_SYNC]      = settings.driveSyncEnabled
         }
     }
 }
