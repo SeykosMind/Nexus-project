@@ -31,7 +31,6 @@ class DocumentRepository @Inject constructor(
     val allDocuments: Flow<List<DocumentEntity>> = dao.getAllDocuments()
     private val gson = Gson()
 
-    // ── Indexado ──────────────────────────────────────────────────────────────
     suspend fun indexFolder(
         folderPath: String,
         onProgress: (Float, String) -> Unit = { _, _ -> }
@@ -80,7 +79,6 @@ class DocumentRepository @Inject constructor(
         if (existingPaths.isNotEmpty()) dao.deleteOrphans(existingPaths)
     }
 
-    // ── Búsqueda semántica (cosine similarity) ────────────────────────────────
     suspend fun semanticSearch(query: String, topK: Int = 15): List<DocumentResult> =
         withContext(Dispatchers.IO) {
             val queryEmbedding = fetchEmbedding(query)
@@ -114,7 +112,6 @@ class DocumentRepository @Inject constructor(
             results
         }
 
-    // ── Búsqueda por keywords (fallback) ──────────────────────────────────────
     suspend fun keywordSearch(query: String): List<DocumentResult> =
         withContext(Dispatchers.IO) {
             (dao.searchByContent(query) + dao.searchByName(query))
@@ -131,7 +128,6 @@ class DocumentRepository @Inject constructor(
 
     suspend fun search(query: String): List<DocumentResult> = semanticSearch(query)
 
-    // ── IA: pregunta en lenguaje natural sobre documentos ────────────────────
     suspend fun queryWithAi(userQuery: String, contextDocs: List<DocumentResult>): String {
         val settings = settingsRepository.getSettings()
         val contextText = contextDocs.take(5).joinToString("\n---\n") {
@@ -160,14 +156,12 @@ class DocumentRepository @Inject constructor(
         }
     }
 
-    // Búsqueda semántica + respuesta IA en un paso
     suspend fun smartQuery(question: String): String {
         val docs = semanticSearch(question, topK = 8)
         if (docs.isEmpty()) return "No encontré documentos relevantes para: \"$question\""
         return queryWithAi(question, docs)
     }
 
-    // ── Abrir documento con la app del sistema ────────────────────────────────
     fun openDocument(context: Context, path: String) {
         val file = File(path)
         if (!file.exists()) return
@@ -179,18 +173,18 @@ class DocumentRepository @Inject constructor(
         context.startActivity(intent)
     }
 
-    // ── Stats ──────────────────────────────────────────────────────────────────
     suspend fun totalCount() = dao.count()
     suspend fun totalSize() = dao.totalSize() ?: 0L
     suspend fun countByExtension() = dao.countByExtension()
     suspend fun recentlyIndexed() = dao.recentlyIndexed()
 
-    // ── Embedding helpers ──────────────────────────────────────────────────────
     private suspend fun fetchEmbedding(text: String): FloatArray = try {
         val settings = settingsRepository.getSettings()
         val response = aiService.embeddings(EmbeddingRequest(settings.modelName, text))
         response.data.firstOrNull()?.embedding?.toFloatArray() ?: floatArrayOf()
-    } catch (e: Exception) { floatArrayOf() }
+    } catch (e: Exception) {
+        floatArrayOf()
+    }
 
     private suspend fun fetchEmbeddingJson(text: String): String {
         val vec = fetchEmbedding(text)
@@ -202,24 +196,23 @@ class DocumentRepository @Inject constructor(
         val type = object : TypeToken<List<Float>>() {}.type
         val list: List<Float> = gson.fromJson(json, type)
         list.toFloatArray()
-    } catch (e: Exception) { floatArrayOf() }
+    } catch (e: Exception) {
+        floatArrayOf()
+    }
 
     private fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
-    if (a.size != b.size || a.isEmpty()) return 0f
-    var dot = 0f
-    var normA = 0f
-    var normB = 0f
-    for (i in a.indices) {
-        dot += a[i] * b[i]
-        normA += a[i] * a[i]
-        normB += b[i] * b[i]
-    }
-    val denom = kotlin.math.sqrt(normA) * kotlin.math.sqrt(normB)
-    if (denom == 0f) return 0f
-    return dot / denom
-    }
-    val denom = kotlin.math.sqrt(normA) * kotlin.math.sqrt(normB)
-    return if (denom == 0f) 0f else dot / denom
+        if (a.size != b.size || a.isEmpty()) return 0f
+        var dot = 0f
+        var normA = 0f
+        var normB = 0f
+        for (i in a.indices) {
+            dot += a[i] * b[i]
+            normA += a[i] * a[i]
+            normB += b[i] * b[i]
+        }
+        val denom = sqrt(normA) * sqrt(normB)
+        if (denom == 0f) return 0f
+        return dot / denom
     }
 
     private fun extractSnippet(content: String, query: String): String {
