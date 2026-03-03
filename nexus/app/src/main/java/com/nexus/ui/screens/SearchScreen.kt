@@ -130,11 +130,12 @@ fun SearchScreen(
                     SectionHeader("📱 ESTE DISPOSITIVO")
                 }
                 items(localResults) { doc ->
-                    DocumentCard(
-                        name = doc.name, path = doc.path,
-                        extension = doc.extension, snippet = doc.snippet,
-                        onClick = { vm.openDocument(doc) }
-                    )
+                
+              DocumentCard(
+    name = doc.name, path = doc.path,
+    extension = doc.extension, snippet = doc.snippet,
+    onClick = { vm.openDriveDocument(doc) }
+)
                 }
             }
 
