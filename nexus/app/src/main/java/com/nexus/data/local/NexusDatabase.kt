@@ -9,6 +9,12 @@ interface DocumentDao {
     @Query("SELECT * FROM documents")
     fun getAllDocuments(): Flow<List<DocumentEntity>>
 
+    @Query("SELECT * FROM documents")
+    suspend fun getAllDocumentsSync(): List<DocumentEntity>
+
+    @Query("SELECT * FROM documents WHERE path LIKE :folderPrefix || '%'")
+    suspend fun getByFolder(folderPrefix: String): List<DocumentEntity>
+
     @Query("SELECT * FROM documents WHERE path = :path")
     suspend fun getByPath(path: String): DocumentEntity?
 
@@ -48,8 +54,5 @@ data class ExtCount(val extension: String, val cnt: Int)
 @Database(entities = [DocumentEntity::class], version = 1, exportSchema = false)
 abstract class NexusDatabase : RoomDatabase() {
     abstract fun documentDao(): DocumentDao
-
-    companion object {
-        const val DATABASE_NAME = "nexus_db"
-    }
+    companion object { const val DATABASE_NAME = "nexus_db" }
 }
