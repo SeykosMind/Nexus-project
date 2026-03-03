@@ -42,6 +42,7 @@ android {
         compose = true
     }
 
+    // ← Esto es lo que cambia — más excludes para evitar conflictos
     packaging {
         resources {
             excludes += setOf(
@@ -49,7 +50,15 @@ android {
                 "/META-INF/DEPENDENCIES",
                 "/META-INF/LICENSE*",
                 "/META-INF/NOTICE*",
-                "mozilla/public-suffix-list.txt"
+                "mozilla/public-suffix-list.txt",
+                // Necesarios para Google API Client + iText
+                "/META-INF/INDEX.LIST",
+                "/META-INF/*.SF",
+                "/META-INF/*.DSA",
+                "/META-INF/*.RSA",
+                "/META-INF/versions/**",
+                "META-INF/groovy/**",
+                "META-INF/groovy-release-info.properties"
             )
         }
     }
@@ -90,12 +99,11 @@ dependencies {
     // Coroutines
     implementation(libs.coroutines.android)
 
-    // --- DOCUMENT PARSING (VERSIÓN OFICIAL MAVEN) ---
-    // Usamos IText para PDF (más estable en MavenCentral) y POI para Word
-    implementation("com.itextpdf:itext7-core:7.2.5") 
+    // Document parsing
+    implementation("com.itextpdf:itext7-core:7.2.5")
     implementation("org.apache.poi:poi:5.2.5")
     implementation("org.apache.poi:poi-ooxml:5.2.5")
-    implementation("org.apache.poi:poi-scratchpad:5.2.5") 
+    implementation("org.apache.poi:poi-scratchpad:5.2.5")
 
     // Background work
     implementation(libs.work.runtime.ktx)
@@ -106,10 +114,14 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.gson)
 
-    debugImplementation(libs.androidx.ui.tooling)
+    // OCR on-device
     implementation("com.google.mlkit:text-recognition:16.0.0")
-implementation("com.google.android.gms:play-services-auth:21.0.0")
-implementation("com.google.api-client:google-api-client-android:2.2.0")
-implementation("com.google.apis:google-api-services-drive:v3-rev20231128-2.0.0")
-implementation("com.google.http-client:google-http-client-gson:1.43.3")
+
+    // Google Drive
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
+    implementation("com.google.api-client:google-api-client-android:2.2.0")
+    implementation("com.google.apis:google-api-services-drive:v3-rev20231128-2.0.0")
+    implementation("com.google.http-client:google-http-client-gson:1.43.3")
+
+    debugImplementation(libs.androidx.ui.tooling)
 }
