@@ -1,35 +1,37 @@
 name: Build NEXUS APK
 
 on:
-  push:
-    branches: [ main ]
+  # Solo compila cuando tú presionas "Run workflow" en GitHub Actions
   workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Razón del build (opcional)'
+        required: false
+        default: 'Build manual'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configurar Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
-      - name: Compilar APK
-        run: |
-          cd nexus
-          chmod +x gradlew
-          # Esto evita que GitHub mate el proceso por falta de memoria (Error 143)
-          export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
-          ./gradlew assembleDebug --no-daemon
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Subir APK como artefacto
+      - name: Grant execute permission for gradlew
+        run: chmod +x nexus/gradlew
+
+      - name: Build Debug APK
+        run: cd nexus && ./gradlew assembleDebug
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-apk
-          # Tu APK se genera aquí según tu carpeta 'app' dentro de 'nexus'
+          name: NEXUS-debug
           path: nexus/app/build/outputs/apk/debug/app-debug.apk
