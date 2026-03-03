@@ -3,12 +3,13 @@ package com.nexus.data.repository
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.nexus.data.local.DocumentDao
 import com.nexus.data.local.LocalAiService
 import com.nexus.data.local.ChatMessage
 import com.nexus.data.local.ChatRequest
 import com.nexus.data.local.EmbeddingRequest
-import com.nexus.data.model.AppSettings
 import com.nexus.data.model.DocumentEntity
 import com.nexus.data.model.DocumentResult
 import kotlinx.coroutines.Dispatchers
@@ -28,8 +29,9 @@ class DocumentRepository @Inject constructor(
     private val context: Context
 ) {
     val allDocuments: Flow<List<DocumentEntity>> = dao.getAllDocuments()
+    private val gson = Gson()
 
-    // ── Indexing ──────────────────────────────────────────────────────────────
+    // ── Indexado ──────────────────────────────────────────────────────────────
     suspend fun indexFolder(
         folderPath: String,
         onProgress: (Float, String) -> Unit = { _, _ -> }
@@ -37,8 +39,14 @@ class DocumentRepository @Inject constructor(
         val folder = File(folderPath)
         if (!folder.exists()) return@withContext
 
+        val settings = settingsRepository.getSettings()
+        val extensions = if (settings.includeImages)
+            extractor.allSupportedExtensions
+        else
+            extractor.supportedExtensions
+
         val files = folder.walkTopDown()
-            .filter { it.isFile && it.extension.lowercase() in extractor.supportedExtensions }
+            .filter { it.isFile && it.extension.lowercase() in extensions }
             .toList()
 
         val existingPaths = mutableListOf<String>()
@@ -50,65 +58,116 @@ class DocumentRepository @Inject constructor(
             val existing = dao.getByPath(file.absolutePath)
             if (existing != null && existing.lastModified == file.lastModified()) return@forEachIndexed
 
-            val content = extractor.extractText(file)
+            val content = extractor.extractTextSuspend(file)
             if (content.isBlank()) return@forEachIndexed
 
-            val entity = DocumentEntity(
-                path = file.absolutePath,
-                name = file.nameWithoutExtension,
-                extension = file.extension,
-                content = content.take(50_000), // cap at 50k chars
-                sizeBytes = file.length(),
-                lastModified = file.lastModified(),
-                indexedAt = System.currentTimeMillis()
+            val embeddingJson = fetchEmbeddingJson(content.take(2000))
+
+            dao.upsert(
+                DocumentEntity(
+                    path = file.absolutePath,
+                    name = file.nameWithoutExtension,
+                    extension = file.extension,
+                    content = content.take(50_000),
+                    sizeBytes = file.length(),
+                    lastModified = file.lastModified(),
+                    indexedAt = System.currentTimeMillis(),
+                    embedding = embeddingJson
+                )
             )
-            dao.upsert(entity)
         }
-        // Remove orphans
-        if (existingPaths.isNotEmpty()) {
-            dao.deleteOrphans(existingPaths)
-        }
+
+        if (existingPaths.isNotEmpty()) dao.deleteOrphans(existingPaths)
     }
 
-    // ── Search ────────────────────────────────────────────────────────────────
-    suspend fun search(query: String): List<DocumentResult> = withContext(Dispatchers.IO) {
-        val byContent = dao.searchByContent(query)
-        val byName = dao.searchByName(query)
-        val combined = (byContent + byName).distinctBy { it.path }
+    // ── Búsqueda semántica (cosine similarity) ────────────────────────────────
+    suspend fun semanticSearch(query: String, topK: Int = 15): List<DocumentResult> =
+        withContext(Dispatchers.IO) {
+            val queryEmbedding = fetchEmbedding(query)
 
-        combined.map { doc ->
-            val snippet = extractSnippet(doc.content, query)
-            DocumentResult(
-                name = doc.name,
-                path = doc.path,
-                extension = doc.extension,
-                snippet = snippet
-            )
-        }.take(30)
-    }
+            if (queryEmbedding.isEmpty()) return@withContext keywordSearch(query)
 
-    // ── AI semantic query ─────────────────────────────────────────────────────
-    suspend fun queryWithAi(userQuery: String, context_docs: List<DocumentResult>): String {
+            val allDocs = dao.getAllDocumentsSync()
+            val scored = allDocs.mapNotNull { doc ->
+                val docEmbedding = parseEmbedding(doc.embedding)
+                if (docEmbedding.isEmpty()) null
+                else Pair(doc, cosineSimilarity(queryEmbedding, docEmbedding))
+            }
+
+            val results = scored
+                .sortedByDescending { it.second }
+                .take(topK)
+                .map { (doc, score) ->
+                    DocumentResult(
+                        name = doc.name,
+                        path = doc.path,
+                        extension = doc.extension,
+                        snippet = extractSnippet(doc.content, query),
+                        score = score
+                    )
+                }
+
+            if (results.isEmpty() || results.first().score < 0.3f) {
+                return@withContext (results + keywordSearch(query)).distinctBy { it.path }.take(20)
+            }
+
+            results
+        }
+
+    // ── Búsqueda por keywords (fallback) ──────────────────────────────────────
+    suspend fun keywordSearch(query: String): List<DocumentResult> =
+        withContext(Dispatchers.IO) {
+            (dao.searchByContent(query) + dao.searchByName(query))
+                .distinctBy { it.path }
+                .map { doc ->
+                    DocumentResult(
+                        name = doc.name,
+                        path = doc.path,
+                        extension = doc.extension,
+                        snippet = extractSnippet(doc.content, query)
+                    )
+                }.take(30)
+        }
+
+    suspend fun search(query: String): List<DocumentResult> = semanticSearch(query)
+
+    // ── IA: pregunta en lenguaje natural sobre documentos ────────────────────
+    suspend fun queryWithAi(userQuery: String, contextDocs: List<DocumentResult>): String {
         val settings = settingsRepository.getSettings()
-        val contextText = context_docs.take(5).joinToString("\n---\n") {
-            "FILE: ${it.name}.${it.extension}\n${it.snippet}"
+        val contextText = contextDocs.take(5).joinToString("\n---\n") {
+            "ARCHIVO: ${it.name}.${it.extension}\n${it.snippet}"
         }
         val request = ChatRequest(
             model = settings.modelName,
             messages = listOf(
-                ChatMessage("system", "You are NEXUS, a personal document intelligence system. Answer questions based on the user's documents. Be concise and precise."),
-                ChatMessage("user", "Based on these documents:\n$contextText\n\nQuestion: $userQuery")
+                ChatMessage(
+                    "system",
+                    "Eres NEXUS, un sistema de inteligencia documental personal. " +
+                    "Responde preguntas basadas en los documentos del usuario. " +
+                    "Sé conciso, preciso y responde en el mismo idioma que la pregunta."
+                ),
+                ChatMessage(
+                    "user",
+                    "Documentos disponibles:\n$contextText\n\nPregunta: $userQuery"
+                )
             )
         )
         return try {
-            val response = aiService.chat(request)
-            response.choices.firstOrNull()?.message?.content ?: "No response from AI"
+            aiService.chat(request).choices.firstOrNull()?.message?.content
+                ?: "Sin respuesta del modelo"
         } catch (e: Exception) {
-            "AI offline — showing file results only"
+            "IA offline — mostrando solo resultados por palabras clave"
         }
     }
 
-    // ── Open document ─────────────────────────────────────────────────────────
+    // Búsqueda semántica + respuesta IA en un paso
+    suspend fun smartQuery(question: String): String {
+        val docs = semanticSearch(question, topK = 8)
+        if (docs.isEmpty()) return "No encontré documentos relevantes para: \"$question\""
+        return queryWithAi(question, docs)
+    }
+
+    // ── Abrir documento con la app del sistema ────────────────────────────────
     fun openDocument(context: Context, path: String) {
         val file = File(path)
         if (!file.exists()) return
@@ -120,22 +179,48 @@ class DocumentRepository @Inject constructor(
         context.startActivity(intent)
     }
 
-    // ── Stats ─────────────────────────────────────────────────────────────────
+    // ── Stats ──────────────────────────────────────────────────────────────────
     suspend fun totalCount() = dao.count()
     suspend fun totalSize() = dao.totalSize() ?: 0L
     suspend fun countByExtension() = dao.countByExtension()
     suspend fun recentlyIndexed() = dao.recentlyIndexed()
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Embedding helpers ──────────────────────────────────────────────────────
+    private suspend fun fetchEmbedding(text: String): FloatArray = try {
+        val settings = settingsRepository.getSettings()
+        val response = aiService.embeddings(EmbeddingRequest(settings.modelName, text))
+        response.data.firstOrNull()?.embedding?.toFloatArray() ?: floatArrayOf()
+    } catch (e: Exception) { floatArrayOf() }
+
+    private suspend fun fetchEmbeddingJson(text: String): String {
+        val vec = fetchEmbedding(text)
+        return if (vec.isEmpty()) "" else gson.toJson(vec.toList())
+    }
+
+    private fun parseEmbedding(json: String): FloatArray = try {
+        if (json.isBlank()) return floatArrayOf()
+        val type = object : TypeToken<List<Float>>() {}.type
+        val list: List<Float> = gson.fromJson(json, type)
+        list.toFloatArray()
+    } catch (e: Exception) { floatArrayOf() }
+
+    private fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
+        if (a.size != b.size || a.isEmpty()) return 0f
+        var dot = 0f; var normA = 0f; var normB = 0f
+        for (i in a.indices) {
+            dot += a[i] * b[i]; normA += a[i] * a[i]; normB += b[i] * b[i]
+        }
+        val denom = kotlin.math.sqrt(normA) * kotlin.math.sqrt(normB)
+        return if (denom == 0f) 0f else dot / denom
+    }
+
     private fun extractSnippet(content: String, query: String): String {
         val idx = content.indexOf(query, ignoreCase = true)
         return if (idx >= 0) {
             val start = maxOf(0, idx - 80)
             val end = minOf(content.length, idx + query.length + 160)
             "...${content.substring(start, end)}..."
-        } else {
-            content.take(220) + "..."
-        }
+        } else content.take(220) + "..."
     }
 
     private fun getMimeType(ext: String) = when (ext.lowercase()) {
@@ -147,6 +232,7 @@ class DocumentRepository @Inject constructor(
         "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         "txt"  -> "text/plain"
         "csv"  -> "text/csv"
+        "jpg", "jpeg", "png", "webp" -> "image/*"
         else   -> "*/*"
     }
 }
