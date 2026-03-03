@@ -191,15 +191,16 @@ class DocumentRepository @Inject constructor(
         return if (vec.isEmpty()) "" else gson.toJson(vec.toList())
     }
 
-    private fun parseEmbedding(json: String): FloatArray = try {
-        if (json.isBlank()) return floatArrayOf()
+    private fun parseEmbedding(json: String): FloatArray {
+    if (json.isBlank()) return floatArrayOf()
+    return try {
         val type = object : TypeToken<List<Float>>() {}.type
         val list: List<Float> = gson.fromJson(json, type)
         list.toFloatArray()
     } catch (e: Exception) {
         floatArrayOf()
     }
-
+    }
     private fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
         if (a.size != b.size || a.isEmpty()) return 0f
         var dot = 0f
