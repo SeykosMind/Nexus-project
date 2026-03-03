@@ -35,32 +35,28 @@ fun DashboardScreen(
 ) {
     val colors = NexusTheme.colors
     val state by vm.uiState.collectAsState()
+    val driveStatus by vm.driveStatus.collectAsState()
+    val networkDevices by vm.networkDevices.collectAsState()
 
     var booted by remember { mutableStateOf(false) }
     val alpha by animateFloatAsState(if (booted) 1f else 0f, tween(800), label = "boot")
-    LaunchedEffect(Unit) { delay(300); booted = true }
+    LaunchedEffect(Unit) { delay(300); booted = true; vm.startNetworkDiscovery() }
 
     Box(Modifier.fillMaxSize().background(colors.background)) {
         HudGrid(Modifier.fillMaxSize())
 
-        Column(
-            Modifier
-                .fillMaxSize()
-                .alpha(alpha)
-        ) {
-            // ── Header + Stats flotantes ───────────────────────────────
+        Column(Modifier.fillMaxSize().alpha(alpha)) {
+
+            // ── Header ─────────────────────────────────────────────────────
             Box(
-                Modifier
-                    .fillMaxWidth()
+                Modifier.fillMaxWidth()
+                    .statusBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Column(Modifier.align(Alignment.TopStart)) {
                     Text("NEXUS", style = NexusTheme.typography.displayLarge, color = colors.primary)
-                    Text(
-                        "PERSONAL DOCUMENT INTELLIGENCE",
-                        style = NexusTheme.typography.labelSmall,
-                        color = colors.onSurface
-                    )
+                    Text("PERSONAL DOCUMENT INTELLIGENCE",
+                        style = NexusTheme.typography.labelSmall, color = colors.onSurface)
                 }
                 IconButton(
                     onClick = { navController.navigate(Screen.Settings.route) },
@@ -69,37 +65,31 @@ fun DashboardScreen(
                     Icon(Icons.Default.Settings, "settings", tint = colors.primary)
                 }
                 Column(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(top = 48.dp),
+                    Modifier.align(Alignment.BottomEnd).padding(top = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     horizontalAlignment = Alignment.End
                 ) {
-                    FloatingStatBadge(label = "LAST SCAN", value = state.lastScan, valueColor = colors.secondary)
-                    FloatingStatBadge(label = "DOCS INDEXED", value = "${state.totalDocs}", valueColor = colors.primary)
-                    FloatingStatBadge(label = "STORAGE", value = state.storageUsed, valueColor = colors.accent)
+                    FloatingStatBadge("LAST SCAN", state.lastScan, colors.secondary)
+                    FloatingStatBadge("DOCS INDEXED", "${state.totalDocs}", colors.primary)
+                    FloatingStatBadge("STORAGE", state.storageUsed, colors.accent)
                 }
             }
 
-            // ── Contenido scrolleable ──────────────────────────────────
+            // ── Contenido scrolleable ──────────────────────────────────────
             Column(
-                Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                Modifier.weight(1f).verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Scan progress
+
+                // Progreso de indexado
                 if (state.isIndexing) {
                     HudPanel(title = "ACTIVE SCAN") {
                         Column(Modifier.padding(12.dp)) {
                             HudProgressBar(state.indexingProgress, Modifier.fillMaxWidth())
                             Spacer(Modifier.height(8.dp))
-                            TypewriterText(
-                                text = state.currentFile,
-                                style = NexusTheme.typography.bodySmall,
-                                color = colors.onSurface
-                            )
+                            TypewriterText(state.currentFile,
+                                style = NexusTheme.typography.bodySmall, color = colors.onSurface)
                         }
                     }
                 }
@@ -110,65 +100,100 @@ fun DashboardScreen(
                         state.docTypes.forEach { (ext, count) ->
                             DocTypeRow(ext, count, state.totalDocs)
                         }
+                        if (state.docTypes.isEmpty()) {
+                            Text("▷ Sin documentos indexados",
+                                style = NexusTheme.typography.bodySmall, color = colors.onSurface)
+                        }
+                    }
+                }
+
+                // ── Google Drive status ────────────────────────────────────
+                HudPanel(title = "☁ GOOGLE DRIVE — NEXUS") {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        when {
+                            driveStatus.isBlank() -> {
+                                Text("▷ Drive no configurado — ve a Settings",
+                                    style = NexusTheme.typography.bodySmall, color = colors.onSurface)
+                            }
+                            driveStatus.startsWith("✓") -> {
+                                Text(driveStatus,
+                                    style = NexusTheme.typography.bodySmall, color = colors.primary)
+                                HudButton("SYNC AHORA", onClick = { vm.syncDrive() },
+                                    modifier = Modifier.fillMaxWidth())
+                            }
+                            else -> {
+                                Text(driveStatus,
+                                    style = NexusTheme.typography.bodySmall, color = colors.secondary)
+                            }
+                        }
+                    }
+                }
+
+                // ── Dispositivos en red WiFi ───────────────────────────────
+                if (networkDevices.isNotEmpty()) {
+                    HudPanel(title = "📡 RED LOCAL — ${networkDevices.size} DISPOSITIVO(S)") {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            networkDevices.forEach { device ->
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(device.name,
+                                            style = NexusTheme.typography.bodySmall, color = colors.primary)
+                                        Text("${device.docCount} docs · ${device.host}",
+                                            style = NexusTheme.typography.labelSmall, color = colors.onSurface)
+                                    }
+                                    if (device.isSharing) {
+                                        Text("COMPARTIENDO",
+                                            style = NexusTheme.typography.labelSmall, color = colors.secondary)
+                                    }
+                                }
+                                if (networkDevices.last() != device) {
+                                    Divider(color = colors.primary.copy(alpha = 0.1f))
+                                }
+                            }
+                        }
                     }
                 }
 
                 // Powered by Gemma
                 HudPanel(title = "POWERED BY GEMMA") {
                     Column(Modifier.padding(12.dp)) {
-                        Text(
-                            "Local AI · ${state.totalDocs} docs · ${state.storageUsed}",
-                            style = NexusTheme.typography.bodySmall,
-                            color = colors.onSurface
-                        )
+                        Text("Local AI · ${state.totalDocs} docs · ${state.storageUsed}",
+                            style = NexusTheme.typography.bodySmall, color = colors.onSurface)
                         Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Endpoint: offline inference engine active",
+                        Text("Endpoint: offline inference engine active",
                             style = NexusTheme.typography.labelSmall,
-                            color = colors.primary.copy(alpha = 0.6f)
-                        )
+                            color = colors.primary.copy(alpha = 0.6f))
                     }
                 }
 
-                // Activity Log estilo terminal hacker
+                // Activity Log
                 HackerActivityLog(logs = state.recentActivity)
 
                 Spacer(Modifier.height(8.dp))
             }
 
-            // ── Query bar prominente fija ──────────────────────────────
+            // ── Query bar ──────────────────────────────────────────────────
             Surface(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { navController.navigate(Screen.Search.route) },
+                Modifier.fillMaxWidth().clickable { navController.navigate(Screen.Search.route) },
                 color = colors.surface,
                 tonalElevation = 4.dp
             ) {
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.Search, "search",
-                        tint = colors.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Icon(Icons.Default.Search, "search", tint = colors.primary, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(14.dp))
-                    Text(
-                        "QUERY INTELLIGENCE BASE...",
+                    Text("QUERY INTELLIGENCE BASE...",
                         style = NexusTheme.typography.titleMedium,
-                        color = colors.onSurface.copy(alpha = 0.6f)
-                    )
+                        color = colors.onSurface.copy(alpha = 0.6f))
                 }
             }
 
-            // ── Botones FORCE SCAN / SEARCH ───────────────────────────
+            // ── Botones ────────────────────────────────────────────────────
             Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(colors.background)
+                Modifier.fillMaxWidth().background(colors.background)
+                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -190,25 +215,17 @@ fun DashboardScreen(
     }
 }
 
-// ── Terminal hacker Activity Log ───────────────────────────────────────────────
+// ── Terminal Log ───────────────────────────────────────────────────────────────
 @Composable
 fun HackerActivityLog(logs: List<String>) {
     val colors = NexusTheme.colors
-
     var cursorVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(530)
-            cursorVisible = !cursorVisible
-        }
-    }
-
     var tick by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            tick++
-        }
+        while (true) { delay(530); cursorVisible = !cursorVisible }
+    }
+    LaunchedEffect(Unit) {
+        while (true) { delay(1000); tick++ }
     }
 
     Surface(
@@ -218,13 +235,9 @@ fun HackerActivityLog(logs: List<String>) {
         shape = RoundedCornerShape(4.dp)
     ) {
         Column(Modifier.padding(12.dp)) {
-
-            // Header terminal
-            Row(
-                Modifier.fillMaxWidth(),
+            Row(Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+                verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).background(colors.accent, CircleShape))
                     Spacer(Modifier.width(5.dp))
@@ -232,70 +245,57 @@ fun HackerActivityLog(logs: List<String>) {
                     Spacer(Modifier.width(5.dp))
                     Box(Modifier.size(8.dp).background(colors.secondary, CircleShape))
                     Spacer(Modifier.width(12.dp))
-                    Text(
-                        "nexus@device:~/logs",
+                    Text("nexus@device:~/logs",
                         style = NexusTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = colors.primary.copy(alpha = 0.7f)
-                    )
+                        color = colors.primary.copy(alpha = 0.7f))
                 }
-                Text(
-                    "UP ${tick / 60}m${tick % 60}s",
+                Text("UP ${tick / 60}m${tick % 60}s",
                     style = NexusTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = colors.secondary.copy(alpha = 0.6f)
-                )
+                    color = colors.secondary.copy(alpha = 0.6f))
             }
 
             Divider(Modifier.padding(vertical = 8.dp), color = colors.primary.copy(alpha = 0.15f))
 
-            // Líneas del log
+            if (logs.isEmpty()) {
+                Text("▷ Sin actividad reciente",
+                    style = NexusTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = colors.onSurface.copy(alpha = 0.5f))
+            }
+
             logs.forEachIndexed { index, log ->
                 val isLast = index == logs.lastIndex
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Text(
-                        "[${String.format("%02d:%02d", (index * 7) / 60, (index * 7) % 60)}]",
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
+                    Text("[${String.format("%02d:%02d", (index * 7) / 60, (index * 7) % 60)}]",
                         style = NexusTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                         color = colors.primary.copy(alpha = 0.4f),
-                        modifier = Modifier.width(52.dp)
-                    )
+                        modifier = Modifier.width(52.dp))
                     Spacer(Modifier.width(6.dp))
-
                     val (prefix, prefixColor) = when {
                         log.contains("INDEXED", ignoreCase = true) -> "INX" to colors.secondary
                         log.contains("ERROR", ignoreCase = true)   -> "ERR" to colors.error
                         log.contains("WARN", ignoreCase = true)    -> "WRN" to colors.warning
+                        log.contains("DRIVE", ignoreCase = true)   -> "DRV" to Color(0xFF4285F4)
+                        log.contains("NET", ignoreCase = true)     -> "NET" to colors.accent
                         else                                        -> "SYS" to colors.primary
                     }
-                    Text(
-                        "[$prefix]",
+                    Text("[$prefix]",
                         style = NexusTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = prefixColor,
-                        modifier = Modifier.width(40.dp)
-                    )
+                        color = prefixColor, modifier = Modifier.width(40.dp))
                     Spacer(Modifier.width(6.dp))
-
-                    Text(
-                        log.removePrefix("INDEXED: "),
+                    Text(log.removePrefix("INDEXED: "),
                         style = NexusTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = if (isLast) colors.onBackground else colors.onSurface.copy(alpha = 0.75f)
-                    )
-
+                        color = if (isLast) colors.onBackground else colors.onSurface.copy(alpha = 0.75f))
                     if (isLast && cursorVisible) {
                         Text("█", style = NexusTheme.typography.bodySmall, color = colors.primary)
                     }
                 }
             }
 
-            // Prompt activo
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "root@nexus:~# ",
+                Text("root@nexus:~# ",
                     style = NexusTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = colors.secondary
-                )
+                    color = colors.secondary)
                 if (cursorVisible) {
                     Text("▌", style = NexusTheme.typography.labelSmall, color = colors.primary)
                 }
@@ -304,23 +304,16 @@ fun HackerActivityLog(logs: List<String>) {
     }
 }
 
-// ── Componentes reutilizables ──────────────────────────────────────────────────
+// ── Componentes ────────────────────────────────────────────────────────────────
 @Composable
-fun FloatingStatBadge(
-    label: String,
-    value: String,
-    valueColor: androidx.compose.ui.graphics.Color
-) {
+fun FloatingStatBadge(label: String, value: String, valueColor: Color) {
     val colors = NexusTheme.colors
     Surface(
         color = colors.surface.copy(alpha = 0.85f),
         shape = RoundedCornerShape(4.dp),
         border = BorderStroke(1.dp, valueColor.copy(alpha = 0.4f))
     ) {
-        Column(
-            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.End
-        ) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), horizontalAlignment = Alignment.End) {
             Text(value, style = NexusTheme.typography.titleMedium, color = valueColor)
             Text(label, style = NexusTheme.typography.labelSmall, color = colors.onSurface)
         }
@@ -332,31 +325,22 @@ fun DocTypeRow(ext: String, count: Int, total: Int) {
     val colors = NexusTheme.colors
     val fraction = if (total > 0) count.toFloat() / total else 0f
     val extColor = when (ext.lowercase()) {
-        "pdf"            -> colors.accent
-        "xlsx", "xls"   -> colors.secondary
-        "docx", "doc"   -> colors.primary
-        "pptx", "ppt"   -> colors.warning
-        else             -> colors.onSurface
+        "pdf"           -> colors.accent
+        "xlsx", "xls"  -> colors.secondary
+        "docx", "doc"  -> colors.primary
+        "pptx", "ppt"  -> colors.warning
+        else            -> colors.onSurface
     }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            ext.uppercase().padEnd(5),
-            style = NexusTheme.typography.labelSmall,
-            color = extColor,
-            modifier = Modifier.width(44.dp)
-        )
+        Text(ext.uppercase().padEnd(5), style = NexusTheme.typography.labelSmall,
+            color = extColor, modifier = Modifier.width(44.dp))
         Spacer(Modifier.width(8.dp))
         Box(Modifier.weight(1f).height(6.dp).background(colors.surfaceVariant)) {
             Box(Modifier.fillMaxHeight().fillMaxWidth(fraction).background(extColor.copy(alpha = 0.7f)))
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            "$count",
-            style = NexusTheme.typography.labelSmall,
-            color = colors.onSurface,
-            modifier = Modifier.width(32.dp),
-            textAlign = TextAlign.End
-        )
+        Text("$count", style = NexusTheme.typography.labelSmall,
+            color = colors.onSurface, modifier = Modifier.width(32.dp), textAlign = TextAlign.End)
     }
 }
 
@@ -370,19 +354,16 @@ fun HudButton(
 ) {
     val colors = NexusTheme.colors
     Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier,
+        onClick = onClick, enabled = enabled, modifier = modifier,
         colors = ButtonDefaults.buttonColors(
             containerColor = colors.primary.copy(alpha = 0.15f),
             contentColor = colors.primary,
             disabledContainerColor = colors.surfaceVariant,
             disabledContentColor = colors.onSurface
         ),
-        border = BorderStroke(
-            1.dp,
-            if (enabled) colors.primary.copy(alpha = 0.5f) else colors.onSurface.copy(alpha = 0.2f)
-        )
+        border = BorderStroke(1.dp,
+            if (enabled) colors.primary.copy(alpha = 0.5f)
+            else colors.onSurface.copy(alpha = 0.2f))
     ) {
         if (icon != null) {
             Icon(icon, null, modifier = Modifier.size(16.dp))
