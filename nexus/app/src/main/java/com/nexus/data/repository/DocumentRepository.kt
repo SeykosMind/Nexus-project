@@ -215,6 +215,10 @@ class DocumentRepository @Inject constructor(
         normB += b[i] * b[i]
     }
     val denom = kotlin.math.sqrt(normA) * kotlin.math.sqrt(normB)
+    if (denom == 0f) return 0f
+    return dot / denom
+    }
+    val denom = kotlin.math.sqrt(normA) * kotlin.math.sqrt(normB)
     return if (denom == 0f) 0f else dot / denom
     }
 
