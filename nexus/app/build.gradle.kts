@@ -107,4 +107,9 @@ dependencies {
     implementation(libs.gson)
 
     debugImplementation(libs.androidx.ui.tooling)
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+implementation("com.google.android.gms:play-services-auth:21.0.0")
+implementation("com.google.api-client:google-api-client-android:2.2.0")
+implementation("com.google.apis:google-api-services-drive:v3-rev20231128-2.0.0")
+implementation("com.google.http-client:google-http-client-gson:1.43.3")
 }
