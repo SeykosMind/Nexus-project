@@ -8,11 +8,11 @@ data class DocumentEntity(
     @PrimaryKey val path: String,
     val name: String,
     val extension: String,
-    val content: String,       // extracted text
+    val content: String,
     val sizeBytes: Long,
     val lastModified: Long,
     val indexedAt: Long,
-    val embedding: String = "" // JSON float array stored as string
+    val embedding: String = ""
 )
 
 data class DocumentResult(
@@ -20,16 +20,25 @@ data class DocumentResult(
     val path: String,
     val extension: String,
     val snippet: String,
-    val score: Float = 1f
+    val score: Float = 1f,
+    val deviceHost: String = "local",
+    val source: String = "local" // "local" | "drive" | "network"
 )
 
 data class AppSettings(
     val apiHost: String = "127.0.0.1",
     val apiPort: String = "8080",
     val modelName: String = "gemma",
-    val watchedFolders: List<String> = listOf("/storage/emulated/0/Documents", "/storage/emulated/0/Downloads"),
+    val watchedFolders: List<String> = listOf(
+        "/storage/emulated/0/Documents",
+        "/storage/emulated/0/Downloads"
+    ),
     val autoSync: Boolean = true,
-    val includeImages: Boolean = false
+    val includeImages: Boolean = false,
+    val sharedNetworkFolder: String = "",
+    // Google Drive
+    val driveFolderId: String = "",   // ID de la carpeta NEXUS en Drive
+    val driveSyncEnabled: Boolean = false
 )
 
 data class DashboardState(
